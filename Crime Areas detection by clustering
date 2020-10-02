@@ -1,0 +1,146 @@
+import requests
+import pandas as pd
+import numpy as np 
+import random
+
+!conda install -c conda-forge geocoder --yes
+import geocoder
+
+!conda install -c conda-forge geopy --yes 
+from geopy.geocoders import Nominatim
+
+from IPython.display import Image 
+from IPython.core.display import HTML 
+from pandas.io.json import json_normalize
+
+!pip install folium
+import folium 
+
+print('Folium installed')
+print('Libraries imported.')
+#Define credentials for Foursquare
+CLIENT_ID = 'ZN2L3CGKQ4PTEIMVFQLQL41HQ4Y44ZR0EH1EBTBI0G1ZHO1N'
+CLIENT_SECRET = '1S3XLSFYGSRPQT142ZZXOSMSP0OV02J4TVRFPHPVRFTAPQGD' 
+
+VERSION = '20180604'
+LIMIT = 30
+df = pd.read_csv("london_crime_by_lsoa.csv")
+df.head()
+#Taking crimes in 2016
+df.drop(df.index[df['year'] != 2016], inplace = True)
+df = df[df.value != 0]
+df = df.reset_index(drop=True)
+df.head()
+#Changing columns name
+df.columns = ['LSOA_Code', 'Borough','Major_Category','Minor_Category','No_of_Crimes','Year','Month']
+df.head()
+
+#Total crimes per Major Category in each Borough
+df['Major_Category'].value_counts()
+#Grouping by each major crime
+London_crime = pd.pivot_table(df,values=['No_of_Crimes'],
+                               index=['Borough'],
+                               columns=['Major_Category'],
+                               aggfunc=np.sum,fill_value=0)
+London_crime.head()
+# Sum of crime for total crimes per Borough
+London_crime.reset_index(inplace = True)
+London_crime['Total'] = London_crime.sum(axis=1)
+London_crime.columns = London_crime.columns.map(''.join)
+London_crime.head()
+#Renaming columns for better understanding
+London_crime.columns = ['Borough','Burglary', 'Criminal Damage','Drugs','Other Notifiable Offences',
+                        'Robbery','Theft and Handling','Violence Against the Person','Total']
+London_crime.head()
+#Import more libraries for bargraphs
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+
+#Find the 5 more dangerous Boroughs
+London_crime.sort_values(['Total'], ascending = False, axis = 0, inplace = True )
+df_top5 = London_crime.head() 
+df_top5
+#Bargraph for the top 5
+df_dangerous = df_top5[['Borough','Total']]
+df_dangerous.set_index('Borough',inplace = True)
+ax = df_dangerous.plot(kind='bar', figsize=(10, 6), rot=0)
+
+ax.set_ylabel('Number of Crimes')
+ax.set_xlabel('Borough') 
+ax.set_title('Most dangerous Boroughs') 
+
+for p in ax.patches:
+    ax.annotate(np.round(p.get_height(),decimals=2), 
+                (p.get_x()+p.get_width()/2., p.get_height()), 
+                ha='center', 
+                va='center', 
+                xytext=(0, 10), 
+                textcoords='offset points',
+                fontsize = 14
+               )
+
+plt.show()
+#Find the 5 safest Boroughs
+London_crime.sort_values(['Total'], ascending = True, axis = 0, inplace = True )
+df_bot5 = London_crime.head() 
+df_bot5
+
+#Bargraph for the bot 5
+df_safest = df_bot5[['Borough','Total']]
+df_safest.set_index('Borough',inplace = True)
+ax = df_safest.plot(kind='bar', figsize=(10, 6), rot=0)
+
+ax.set_ylabel('Number of Crimes') 
+ax.set_xlabel('Borough')
+ax.set_title('Safest Boroughs')
+
+for p in ax.patches:
+    ax.annotate(np.round(p.get_height(),decimals=2), 
+                (p.get_x()+p.get_width()/2., p.get_height()), 
+                ha='center', 
+                va='center', 
+                xytext=(0, 10), 
+                textcoords='offset points',
+                fontsize = 14
+               )
+
+plt.show()
+
+#Open json coordinates info for London
+import json
+with open('coordinates.json') as json_data:
+    london_data = json.load(json_data)
+    
+london_data
+#Generating table and coordinates
+Borough = ['City of London','Kingston upon Thames','Richmond upon Thames','Sutton',
+          'Merton']
+
+Latitude = ['51.5155','51.4085','51.4479','51.3618','51.4014']
+Longitude = ['-0.0922','-0.3064','-0.3260','-0.0804','-0.1958']
+
+df_bor = {'Borough':Borough,'Latitude': Latitude,'Longitude':Longitude}
+coord_bor = pd.DataFrame(data=df_bor, columns=['Borough', 'Latitude', 'Longitude'], index=None)
+
+coord_bor
+
+coord_bor.dtypes
+coord_bor['Latitude'] = coord_bor['Latitude'].astype(float)
+coord_bor['Longitude'] = coord_bor['Longitude'].astype(float)
+coord_bor.dtypes
+
+#Generating map
+london_map = folium.Map(location=[51.5074, -0.1278], zoom_start=10)
+
+for lat, lng, borough, in zip(coord_bor['Latitude'], coord_bor['Longitude'], coord_bor['Borough']):
+    label = folium.Popup(borough, parse_html=True)
+    folium.CircleMarker(
+        [lat, lng],
+        radius=5,
+        popup=label,
+        color='black',
+        fill=True,
+        fill_color='#3186cc',
+        fill_opacity=0.7).add_to(london_map)  
+    
+london_map
